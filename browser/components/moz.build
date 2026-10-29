@@ -43,6 +43,7 @@ DIRS += [
     "ipprotection",
     "messagepreview",
     "migration",
+    "minibrowser",
     "mozcachedohttp",
     "multilineeditor",
     "newtab",

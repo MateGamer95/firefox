@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+<!DOCTYPE html>
+<html
+  xmlns="http://www.w3.org/1999/xhtml"
+  xmlns:xul="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
+  windowtype="minibrowser:main"
+  width="1200"
+  height="800"
+>
+  <head>
+    <meta charset="utf-8" />
+    <title>Minibrowser</title>
+    <link
+      rel="stylesheet"
+      href="chrome://browser/content/minibrowser/minibrowser.css"
+    />
+    <script src="chrome://browser/content/minibrowser/minibrowser.js" />
+  </head>
+  <body>
+    <div id="toolbar">
+      <button id="back" title="Zurück (Alt+←)" disabled="disabled">
+        &#x2190;
+      </button>
+      <button id="forward" title="Vorwärts (Alt+→)" disabled="disabled">
+        &#x2192;
+      </button>
+      <button id="reload" title="Neu laden (F5) / Stopp (Esc)">&#x21bb;</button>
+      <button id="home" title="Startseite">&#x2302;</button>
+      <input
+        id="urlbar"
+        type="text"
+        spellcheck="false"
+        placeholder="Adresse oder Suchbegriff eingeben"
+      />
+    </div>
+    <div id="progress"></div>
+    <xul:browser
+      id="content"
+      type="content"
+      primary="true"
+      remote="true"
+      maychangeremoteness="true"
+      messagemanagergroup="browsers"
+    />
+    <div id="status"></div>
+  </body>
+</html>
