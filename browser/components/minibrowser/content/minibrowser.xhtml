@@ -6,45 +6,360 @@
 <html
   xmlns="http://www.w3.org/1999/xhtml"
   xmlns:xul="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
-  windowtype="minibrowser:main"
-  width="1200"
-  height="800"
+  windowtype="geckogx:main"
+  width="1400"
+  height="900"
+  persist="width height screenX screenY sizemode"
 >
   <head>
     <meta charset="utf-8" />
-    <title>Minibrowser</title>
+    <title>Gecko GX</title>
+    <link
+      rel="stylesheet"
+      href="chrome://global/skin/design-system/tokens-platform.css"
+    />
     <link
       rel="stylesheet"
       href="chrome://browser/content/minibrowser/minibrowser.css"
     />
+    <script src="chrome://global/content/globalOverlay.js" />
     <script src="chrome://browser/content/minibrowser/minibrowser.js" />
+    <script src="chrome://browser/content/minibrowser/gx-tabs.js" />
+    <script src="chrome://browser/content/minibrowser/gx-integration.js" />
+    <script src="chrome://browser/content/minibrowser/gx-sidebar.js" />
+    <script src="chrome://browser/content/minibrowser/gx-control.js" />
+    <script src="chrome://browser/content/minibrowser/gx-start.js" />
+    <script src="chrome://browser/content/minibrowser/gx-settings.js" />
   </head>
   <body>
-    <div id="toolbar">
-      <button id="back" title="Zurück (Alt+←)" disabled="disabled">
-        &#x2190;
+    <nav id="sidebar">
+      <div id="logo" title="Gecko GX">GX</div>
+      <button
+        class="sidebar-btn"
+        data-view="control"
+        data-icon="gauge"
+        title="GX Control (Strg+Umschalt+Esc)"
+      >
+        <span id="sidebar-ram" class="mini-meter"><span></span></span>
       </button>
-      <button id="forward" title="Vorwärts (Alt+→)" disabled="disabled">
-        &#x2192;
+      <div class="sidebar-sep"></div>
+      <div id="sidebar-panels"></div>
+      <button
+        id="panel-add"
+        class="sidebar-btn"
+        data-icon="plus"
+        title="Web-Panel hinzufügen"
+      ></button>
+      <div class="spacer"></div>
+      <button
+        class="sidebar-btn"
+        data-view="history"
+        data-icon="history"
+        title="Verlauf (Strg+H)"
+      ></button>
+      <button
+        class="sidebar-btn"
+        data-view="bookmarks"
+        data-icon="bookmark"
+        title="Lesezeichen"
+      ></button>
+      <button
+        class="sidebar-btn"
+        data-view="downloads"
+        data-icon="download"
+        title="Downloads (Strg+J)"
+      >
+        <span id="sidebar-dl-badge" class="badge" hidden="hidden"></span>
       </button>
-      <button id="reload" title="Neu laden (F5) / Stopp (Esc)">&#x21bb;</button>
-      <button id="home" title="Startseite">&#x2302;</button>
-      <input
-        id="urlbar"
-        type="text"
-        spellcheck="false"
-        placeholder="Adresse oder Suchbegriff eingeben"
-      />
-    </div>
-    <div id="progress"></div>
-    <xul:browser
-      id="content"
-      type="content"
-      primary="true"
-      remote="true"
-      maychangeremoteness="true"
-      messagemanagergroup="browsers"
-    />
-    <div id="status"></div>
+      <button
+        class="sidebar-btn"
+        data-view="settings"
+        data-icon="sliders"
+        title="Einstellungen"
+      ></button>
+    </nav>
+
+    <aside id="panel-host" hidden="hidden">
+      <header id="panel-header">
+        <span id="panel-title"></span>
+        <button
+          id="panel-reload"
+          class="icon-btn"
+          data-icon="reload"
+          title="Panel neu laden"
+        ></button>
+        <button
+          id="panel-popout"
+          class="icon-btn"
+          data-icon="external"
+          title="In neuem Tab öffnen"
+        ></button>
+        <button
+          id="panel-close"
+          class="icon-btn"
+          data-icon="close"
+          title="Schließen"
+        ></button>
+      </header>
+      <div id="panel-stack">
+        <section class="view" data-view="control">
+          <div class="card">
+            <div class="card-head">
+              <span>CPU</span><b id="cpu-value">0 %</b>
+            </div>
+            <canvas id="cpu-graph" class="graph"></canvas>
+          </div>
+          <div class="card">
+            <div class="card-head">
+              <span>RAM</span><b id="ram-value">0 MB</b>
+            </div>
+            <canvas id="ram-graph" class="graph"></canvas>
+          </div>
+          <div class="card">
+            <label class="switch-row">
+              <span>
+                <b>RAM-Limiter</b>
+                <small
+                  >Legt Hintergrund-Tabs schlafen, wenn das Limit überschritten
+                  wird.</small
+                >
+              </span>
+              <input type="checkbox" id="ram-limit-on" class="switch" />
+            </label>
+            <div class="slider-row">
+              <input type="range" id="ram-limit" min="512" step="256" />
+              <output id="ram-limit-label"></output>
+            </div>
+            <small id="ram-slept" class="muted"></small>
+          </div>
+          <div class="card">
+            <label class="switch-row">
+              <span>
+                <b>CPU-Limiter</b>
+                <small
+                  >Begrenzt die Bildrate und drosselt Timer in
+                  Hintergrund-Tabs.</small
+                >
+              </span>
+              <input type="checkbox" id="cpu-limit-on" class="switch" />
+            </label>
+            <div class="segmented" id="cpu-limit-fps">
+              <button data-fps="30">30 FPS</button>
+              <button data-fps="60">60 FPS</button>
+              <button data-fps="120">120 FPS</button>
+            </div>
+          </div>
+          <div class="card">
+            <label class="switch-row">
+              <span>
+                <b>Werbe- und Tracker-Blocker</b>
+                <small
+                  >Blockiert Tracker, Social-Tracker, Krypto-Miner und
+                  Fingerprinter.</small
+                >
+              </span>
+              <input type="checkbox" id="blocker-on" class="switch" />
+            </label>
+            <label class="switch-row">
+              <span><b>Popups blockieren</b></span>
+              <input type="checkbox" id="popups-on" class="switch" />
+            </label>
+            <div class="stat-row">
+              <span>Blockiert auf dieser Seite</span><b id="blocked-page">0</b>
+            </div>
+            <div class="stat-row">
+              <span>Blockiert insgesamt</span><b id="blocked-total">0</b>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-head"><span>Prozesse</span></div>
+            <div id="proc-list"></div>
+          </div>
+        </section>
+
+        <section class="view" data-view="history">
+          <div class="view-toolbar">
+            <input
+              id="history-search"
+              type="search"
+              placeholder="Verlauf durchsuchen"
+            />
+            <button id="history-clear" class="text-btn">Löschen</button>
+          </div>
+          <div id="history-list" class="item-list"></div>
+        </section>
+
+        <section class="view" data-view="bookmarks">
+          <div class="view-toolbar">
+            <input
+              id="bookmarks-search"
+              type="search"
+              placeholder="Lesezeichen durchsuchen"
+            />
+          </div>
+          <div id="bookmarks-list" class="item-list"></div>
+        </section>
+
+        <section class="view" data-view="downloads">
+          <div class="view-toolbar">
+            <span class="muted" id="downloads-summary"></span>
+            <button id="downloads-clear" class="text-btn">Liste leeren</button>
+          </div>
+          <div id="downloads-list" class="item-list"></div>
+        </section>
+
+        <section class="view" data-view="settings">
+          <div id="settings"></div>
+        </section>
+      </div>
+      <div id="panel-resizer"></div>
+    </aside>
+
+    <main id="main">
+      <div id="tabstrip">
+        <div id="tabs"></div>
+        <button
+          id="newtab"
+          class="icon-btn"
+          data-icon="plus"
+          title="Neuer Tab (Strg+T)"
+        ></button>
+      </div>
+
+      <div id="toolbar">
+        <button
+          id="back"
+          class="icon-btn"
+          data-icon="back"
+          title="Zurück (Alt+←)"
+        ></button>
+        <button
+          id="forward"
+          class="icon-btn"
+          data-icon="forward"
+          title="Vor (Alt+→)"
+        ></button>
+        <button id="reload" class="icon-btn" title="Neu laden (F5)"></button>
+        <button
+          id="home"
+          class="icon-btn"
+          data-icon="home"
+          title="Startseite"
+        ></button>
+        <div id="urlbar-wrap">
+          <span id="identity" data-icon="lock"></span>
+          <input
+            id="urlbar"
+            type="text"
+            spellcheck="false"
+            autocomplete="off"
+            placeholder="Suchen oder Adresse eingeben"
+          />
+          <button
+            id="zoom"
+            class="pill"
+            hidden="hidden"
+            title="Zoom zurücksetzen"
+          ></button>
+          <button
+            id="star"
+            class="icon-btn"
+            data-icon="star"
+            title="Lesezeichen (Strg+D)"
+          ></button>
+          <div id="urlbar-results" hidden="hidden"></div>
+        </div>
+        <button id="shield" class="icon-btn" data-icon="shield" title="Blocker">
+          <span id="shield-count" class="badge"></span>
+        </button>
+        <button
+          id="menu-btn"
+          class="icon-btn"
+          data-icon="dots"
+          title="Menü"
+        ></button>
+      </div>
+
+      <div id="bookmarksbar"></div>
+
+      <div id="content-area">
+        <div id="browsers"></div>
+        <div id="start">
+          <div id="start-inner">
+            <div id="start-clock"></div>
+            <div id="start-date"></div>
+            <form id="start-form">
+              <span data-icon="search"></span>
+              <input
+                id="start-search"
+                type="text"
+                autocomplete="off"
+                placeholder="Im Web suchen"
+              />
+            </form>
+            <div id="tiles"></div>
+            <div id="start-widgets">
+              <div class="widget">
+                <b id="w-blocked">0</b><span>Tracker blockiert</span>
+              </div>
+              <div class="widget">
+                <b id="w-ram">–</b><span>RAM-Nutzung</span>
+              </div>
+              <div class="widget">
+                <b id="w-tabs">0</b><span>Tabs offen</span>
+              </div>
+            </div>
+          </div>
+          <form id="tile-editor" hidden="hidden">
+            <b>Kachel hinzufügen</b>
+            <input id="tile-name" type="text" placeholder="Name" />
+            <input
+              id="tile-url"
+              type="text"
+              placeholder="https://…"
+              required="required"
+            />
+            <div class="row">
+              <button type="button" id="tile-cancel" class="text-btn">
+                Abbrechen
+              </button>
+              <button type="submit" class="accent-btn">Hinzufügen</button>
+            </div>
+          </form>
+        </div>
+        <div id="findbar" hidden="hidden">
+          <input id="find-input" type="text" placeholder="Auf Seite suchen" />
+          <span id="find-count"></span>
+          <button
+            id="find-prev"
+            class="icon-btn"
+            data-icon="up"
+            title="Vorheriger Treffer"
+          ></button>
+          <button
+            id="find-next"
+            class="icon-btn"
+            data-icon="down"
+            title="Nächster Treffer"
+          ></button>
+          <label
+            ><input type="checkbox" id="find-highlight" /> Alle
+            hervorheben</label
+          >
+          <button
+            id="find-close"
+            class="icon-btn"
+            data-icon="close"
+            title="Schließen"
+          ></button>
+        </div>
+        <div id="status" hidden="hidden"></div>
+      </div>
+    </main>
+
+    <xul:menupopup id="contentAreaContextMenu" />
+    <xul:menupopup id="tabContextMenu" />
+    <xul:menupopup id="mainMenu" />
+    <xul:tooltip id="remoteBrowserTooltip" />
   </body>
 </html>
