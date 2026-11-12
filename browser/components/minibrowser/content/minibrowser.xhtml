@@ -26,6 +26,9 @@
     <script src="chrome://browser/content/minibrowser/minibrowser.js" />
     <script src="chrome://browser/content/minibrowser/gx-tabs.js" />
     <script src="chrome://browser/content/minibrowser/gx-integration.js" />
+    <script src="chrome://browser/content/minibrowser/gx-notify.js" />
+    <script src="chrome://browser/content/minibrowser/gx-shields.js" />
+    <script src="chrome://browser/content/minibrowser/gx-tools.js" />
     <script src="chrome://browser/content/minibrowser/gx-sidebar.js" />
     <script src="chrome://browser/content/minibrowser/gx-control.js" />
     <script src="chrome://browser/content/minibrowser/gx-start.js" />
@@ -62,6 +65,18 @@
         data-view="bookmarks"
         data-icon="bookmark"
         title="Lesezeichen"
+      ></button>
+      <button
+        class="sidebar-btn"
+        data-view="reading"
+        data-icon="book"
+        title="Leseliste"
+      ></button>
+      <button
+        class="sidebar-btn"
+        data-view="passwords"
+        data-icon="key"
+        title="Passwörter"
       ></button>
       <button
         class="sidebar-btn"
@@ -208,6 +223,27 @@
           <div id="downloads-list" class="item-list"></div>
         </section>
 
+        <section class="view" data-view="reading">
+          <div class="view-toolbar">
+            <span class="muted">Später lesen</span>
+            <button id="reading-add" class="text-btn">
+              Aktuelle Seite hinzufügen
+            </button>
+          </div>
+          <div id="reading-list" class="item-list"></div>
+        </section>
+
+        <section class="view" data-view="passwords">
+          <div class="view-toolbar">
+            <input
+              id="passwords-search"
+              type="search"
+              placeholder="Passwörter durchsuchen"
+            />
+          </div>
+          <div id="passwords-list" class="item-list"></div>
+        </section>
+
         <section class="view" data-view="settings">
           <div id="settings"></div>
         </section>
@@ -262,6 +298,25 @@
             title="Zoom zurücksetzen"
           ></button>
           <button
+            id="notif-anchor"
+            class="icon-btn"
+            data-icon="key"
+            hidden="hidden"
+            title="Offene Anfrage anzeigen"
+          ></button>
+          <button
+            id="qr-btn"
+            class="icon-btn"
+            data-icon="qr"
+            title="QR-Code"
+          ></button>
+          <button
+            id="reading-btn"
+            class="icon-btn"
+            data-icon="book"
+            title="Zur Leseliste hinzufügen"
+          ></button>
+          <button
             id="star"
             class="icon-btn"
             data-icon="star"
@@ -269,7 +324,12 @@
           ></button>
           <div id="urlbar-results" hidden="hidden"></div>
         </div>
-        <button id="shield" class="icon-btn" data-icon="shield" title="Blocker">
+        <button
+          id="shield"
+          class="icon-btn"
+          data-icon="shield"
+          title="Gecko GX Shields"
+        >
           <span id="shield-count" class="badge"></span>
         </button>
         <button
@@ -300,14 +360,26 @@
             <div id="tiles"></div>
             <div id="start-widgets">
               <div class="widget">
-                <b id="w-blocked">0</b><span>Tracker blockiert</span>
+                <b id="w-blocked">0</b
+                ><span>Werbung &amp; Tracker blockiert</span>
+              </div>
+              <div class="widget">
+                <b id="w-time">0 s</b><span>Zeit gespart (geschätzt)</span>
+              </div>
+              <div class="widget">
+                <b id="w-data">0 KB</b><span>Daten gespart (geschätzt)</span>
               </div>
               <div class="widget">
                 <b id="w-ram">–</b><span>RAM-Nutzung</span>
               </div>
-              <div class="widget">
-                <b id="w-tabs">0</b><span>Tabs offen</span>
-              </div>
+            </div>
+            <div id="private-info">
+              <b>Privates Fenster</b>
+              <span
+                >Gecko GX speichert hier keinen Verlauf, keine Cookies und keine
+                Sitzung. Downloads und Lesezeichen bleiben erhalten. Deine
+                Internetanbieter und besuchte Seiten sehen dich trotzdem.</span
+              >
             </div>
           </div>
           <form id="tile-editor" hidden="hidden">
@@ -354,6 +426,7 @@
           ></button>
         </div>
         <div id="status" hidden="hidden"></div>
+        <div id="notification-popup" hidden="hidden"></div>
       </div>
     </main>
 
@@ -361,5 +434,28 @@
     <xul:menupopup id="tabContextMenu" />
     <xul:menupopup id="mainMenu" />
     <xul:tooltip id="remoteBrowserTooltip" />
+    <xul:panel
+      type="autocomplete-richlistbox"
+      id="PopupAutoComplete"
+      role="group"
+      noautofocus="true"
+      hidden="true"
+      norolluponanchor="true"
+      nomaxresults="true"
+    />
+
+    <div id="shields-popup" class="popover" hidden="hidden"></div>
+    <div id="qr-popup" class="popover" hidden="hidden"></div>
+    <div id="tabsearch" hidden="hidden">
+      <div id="tabsearch-box">
+        <input
+          id="tabsearch-input"
+          type="text"
+          placeholder="Tabs durchsuchen"
+        />
+        <div id="tabsearch-list" class="item-list"></div>
+      </div>
+    </div>
+    <div id="toast" hidden="hidden"></div>
   </body>
 </html>

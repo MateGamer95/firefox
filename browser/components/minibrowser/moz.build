@@ -6,3 +6,11 @@ with Files("**"):
     BUG_COMPONENT = ("Firefox", "General")
 
 JAR_MANIFESTS += ["jar.mn"]
+
+JS_PREFERENCE_FILES += ["geckogx-prefs.js"]
+
+MOZ_SRC_FILES += [
+    "modules/GXShields.sys.mjs",
+    "modules/GXShieldsChild.sys.mjs",
+    "modules/GXShieldsParent.sys.mjs",
+]

@@ -50,6 +50,7 @@ export default [
   // browser/ exclusions
   "browser/app/",
   "browser/branding/**/firefox-branding.js",
+  "browser/components/minibrowser/geckogx-prefs.js",
   // Gzipped test file.
   "browser/base/content/test/browser-general/gZipOfflineChild.html",
   // Pre-processed template file

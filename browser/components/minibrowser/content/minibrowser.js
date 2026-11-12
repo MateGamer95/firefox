@@ -6,6 +6,9 @@
 
 /* import-globals-from gx-tabs.js */
 /* import-globals-from gx-integration.js */
+/* import-globals-from gx-notify.js */
+/* import-globals-from gx-shields.js */
+/* import-globals-from gx-tools.js */
 /* import-globals-from gx-sidebar.js */
 /* import-globals-from gx-control.js */
 /* import-globals-from gx-start.js */
@@ -14,7 +17,13 @@
 const Modules = {};
 ChromeUtils.defineESModuleGetters(Modules, {
   Downloads: "resource://gre/modules/Downloads.sys.mjs",
+  GXShields:
+    "moz-src:///browser/components/minibrowser/modules/GXShields.sys.mjs",
+  GXStartup:
+    "moz-src:///browser/components/minibrowser/modules/GXShields.sys.mjs",
   PlacesUtils: "resource://gre/modules/PlacesUtils.sys.mjs",
+  PrivateBrowsingUtils: "resource://gre/modules/PrivateBrowsingUtils.sys.mjs",
+  QR: "moz-src:///toolkit/components/qrcode/encoder.mjs",
   SearchService: "moz-src:///toolkit/components/search/SearchService.sys.mjs",
 });
 
@@ -65,6 +74,16 @@ const ICONS = {
   play: "M8 5l11 7-11 7z",
   retry: "M4 12a8 8 0 1 0 2.3-5.7 M4 4v5h5",
   trash: "M4 7h16 M9 7V4h6v3 M6 7l1 13h10l1-13",
+  user: "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8z M4 21a8 8 0 0 1 16 0",
+  key: "M15 9a4 4 0 1 0-3.9 4.9L10 15H8v2H6v2H3v-3l6.1-6.1A4 4 0 0 0 15 9z M16 8h.01",
+  qr: "M4 4h6v6H4z M14 4h6v6h-6z M4 14h6v6H4z M14 14h2v2h-2z M18 18h2v2h-2z M18 14h2 M14 18v2",
+  book: "M4 5a2 2 0 0 1 2-2h12v16H6a2 2 0 0 0-2 2z M4 19V5 M8 7h6",
+  translate:
+    "M4 5h9 M8.5 3v2 M6 5c1 4 3.5 6.5 6 8 M11 5c-1 4-4 7.5-7 9 M13 21l4-9 4 9 M14.5 18h5",
+  camera: "M4 8h3l2-3h6l2 3h3v11H4z M12 17a4 4 0 1 0 0-8 4 4 0 0 0 0 8z",
+  tabs: "M3 6h18v14H3z M3 10h18 M8 6V3h8v3",
+  incognito:
+    "M3 11h18 M6 11l2-6h8l2 6 M8 19a3 3 0 1 0 0-6 3 3 0 0 0 0 6z M16 19a3 3 0 1 0 0-6 3 3 0 0 0 0 6z M11 16h2",
 };
 
 function makeIcon(name) {
@@ -303,11 +322,17 @@ const Urlbar = {
       }
       this.index = i;
       this.input.value =
-        i >= 0 && !this.results[i].search ? this.results[i].url : this.typed;
+        i >= 0 && this.results[i].url && !this.results[i].search
+          ? this.results[i].url
+          : this.typed;
       this.render();
     } else if (e.key == "Enter") {
       e.preventDefault();
       const picked = this.results[this.index];
+      if (picked?.answer) {
+        this.copyAnswer(picked.answer);
+        return;
+      }
       const target = picked ? picked.url : this.input.value.trim();
       this.hide();
       if (!target) {
@@ -352,7 +377,11 @@ const Urlbar = {
     if (gen != this.generation) {
       return;
     }
+    const calc = Calc.evaluate(text);
+    const unit = calc == null ? Units.convert(text) : null;
+    const answer = calc != null ? Calc.format(calc) : unit;
     this.results = [
+      ...(answer ? [{ answer, title: text }] : []),
       { url: await Search.url(text), title: text, search: true },
       ...rows.map(r => ({
         url: r.getResultByName("url"),
@@ -378,6 +407,10 @@ const Urlbar = {
             class: "item",
             onmousedown: e => {
               e.preventDefault();
+              if (r.answer) {
+                this.copyAnswer(r.answer);
+                return;
+              }
               this.hide();
               if (e.button == 1) {
                 Tabs.open(r.url);
@@ -386,23 +419,49 @@ const Urlbar = {
               }
             },
           },
-          r.search ? makeIcon("search") : siteIcon(r.url, null, "fallback"),
+          this.rowIcon(r),
           el(
             "span",
             { class: "text" },
-            el("b", {}, r.search ? `„${r.title}“` : r.title),
-            el(
-              "span",
-              { class: "sub" },
-              r.search ? `– mit ${Search.name} suchen` : r.url
-            )
+            el("b", {}, this.rowTitle(r)),
+            el("span", { class: "sub" }, this.rowSub(r))
           )
         );
+        row.classList.toggle("answer", !!r.answer);
         row.toggleAttribute("selected", i == this.index);
         return row;
       })
     );
     this.box.hidden = false;
+  },
+
+  rowIcon(r) {
+    if (r.answer) {
+      return makeIcon("sliders");
+    }
+    return r.search ? makeIcon("search") : siteIcon(r.url, null, "fallback");
+  },
+
+  rowTitle(r) {
+    if (r.answer) {
+      return `= ${r.answer}`;
+    }
+    return r.search ? `„${r.title}“` : r.title;
+  },
+
+  rowSub(r) {
+    if (r.answer) {
+      return "– Enter kopiert das Ergebnis";
+    }
+    return r.search ? `– mit ${Search.name} suchen` : r.url;
+  },
+
+  copyAnswer(answer) {
+    copyToClipboard(
+      answer.replace(/\s.*$/, "").replace(/\./g, "").replace(",", ".")
+    );
+    this.hide();
+    Toast.show(`${answer} kopiert`);
   },
 
   hide() {
@@ -431,7 +490,19 @@ const Toolbar = {
     $("home").addEventListener("click", () => Tabs.goHome(Tabs.selected));
     $("star").addEventListener("click", () => Bookmarks.toggle(Tabs.selected));
     $("zoom").addEventListener("click", () => Zoom.change(0));
-    $("shield").addEventListener("click", () => Sidebar.toggle("control"));
+    $("qr-btn").addEventListener("click", () => Tools.toggleQR());
+    $("reading-btn").addEventListener("click", () => ReadingList.addCurrent());
+    $("reading-add").addEventListener("click", () => ReadingList.addCurrent());
+    document.addEventListener("mousedown", e => {
+      const qr = $("qr-popup");
+      if (
+        !qr.hidden &&
+        !qr.contains(e.target) &&
+        !$("qr-btn").contains(e.target)
+      ) {
+        qr.hidden = true;
+      }
+    });
     $("menu-btn").addEventListener("click", () => MainMenu.open($("menu-btn")));
   },
 
@@ -468,9 +539,18 @@ const Toolbar = {
     const zoom = b?.fullZoom ?? 1;
     $("zoom").hidden = Math.abs(zoom - 1) < 0.01 || start;
     $("zoom").textContent = `${Math.round(zoom * 100)} %`;
-    $("shield-count").textContent =
-      tab.blocked && !start ? String(tab.blocked) : "";
+    $("qr-btn").hidden = start || !/^https?:/.test(tab.pageUrl ?? "");
+    $("reading-btn").hidden = $("qr-btn").hidden;
+    this.updateShield(tab);
     Bookmarks.updateStar(start ? "" : tab.pageUrl);
+  },
+
+  updateShield(tab) {
+    const on = Shields.isOn(tab);
+    const count = Shields.count(tab);
+    $("shield").toggleAttribute("off", !on);
+    $("shield-count").textContent =
+      on && count && !tab.startPage ? String(count) : "";
   },
 };
 
@@ -606,16 +686,27 @@ const FindBar = {
 const MainMenu = {
   open(anchor) {
     const tab = Tabs.selected;
+    const page = !!tab?.pageUrl && !tab.startPage;
     Menu.showFor(
       $("mainMenu"),
       [
         { label: "Neuer Tab", accel: "Strg+T", cmd: () => Tabs.open() },
         { label: "Neues Fenster", accel: "Strg+N", cmd: () => openNewWindow() },
         {
+          label: "Neues privates Fenster",
+          accel: "Strg+Umschalt+N",
+          cmd: () => openNewWindow({ private: true }),
+        },
+        {
           label: "Geschlossenen Tab wiederherstellen",
           accel: "Strg+Umschalt+T",
           disabled: !Tabs.closed.length,
           cmd: () => Tabs.reopenClosed(),
+        },
+        {
+          label: "Tabs suchen …",
+          accel: "Strg+Umschalt+A",
+          cmd: () => TabSearch.toggle(),
         },
         "-",
         {
@@ -624,12 +715,30 @@ const MainMenu = {
           cmd: () => Sidebar.show("history"),
         },
         { label: "Lesezeichen", cmd: () => Sidebar.show("bookmarks") },
+        { label: "Leseliste", cmd: () => Sidebar.show("reading") },
+        { label: "Passwörter", cmd: () => Sidebar.show("passwords") },
         {
           label: "Downloads",
           accel: "Strg+J",
           cmd: () => Sidebar.show("downloads"),
         },
         "-",
+        {
+          label: "Seite übersetzen",
+          disabled: !page,
+          cmd: () => Tools.translate(),
+        },
+        {
+          label: "Screenshot",
+          accel: "Strg+Umschalt+S",
+          disabled: !page,
+          cmd: () => Tools.screenshot(),
+        },
+        {
+          label: "Zur Leseliste hinzufügen",
+          disabled: !page,
+          cmd: () => ReadingList.addCurrent(),
+        },
         {
           label: "Auf Seite suchen …",
           accel: "Strg+F",
@@ -645,11 +754,17 @@ const MainMenu = {
         {
           label: "Seitenquelltext",
           accel: "Strg+U",
-          disabled: !tab?.pageUrl || tab.startPage,
+          disabled: !page,
           cmd: () =>
             Tabs.open(`view-source:${tab.pageUrl}`, { afterCurrent: true }),
         },
         "-",
+        {
+          label: Prefs.get("verticalTabs", false)
+            ? "Tabs oben anzeigen"
+            : "Vertikale Tabs",
+          cmd: () => Theme.toggleVerticalTabs(),
+        },
         {
           label: "GX Control",
           accel: "Strg+Umschalt+Esc",
@@ -725,6 +840,10 @@ const Shortcuts = {
     ["VK_PAGE_DOWN", "accel", () => Tabs.cycle(1)],
     ["VK_PAGE_UP", "accel", () => Tabs.cycle(-1)],
     ["VK_ESCAPE", "", () => Shortcuts.escape()],
+    ["n", "accel,shift", () => openNewWindow({ private: true })],
+    ["p", "accel,shift", () => openNewWindow({ private: true })],
+    ["a", "accel,shift", () => TabSearch.toggle()],
+    ["s", "accel,shift", () => Tools.screenshot()],
   ],
 
   init() {
@@ -775,26 +894,120 @@ const Shortcuts = {
   },
 };
 
-function openNewWindow() {
+const FRESH_WINDOW = "geckogx:fresh";
+const START_PAGES = new Set([
+  "",
+  "about:home",
+  "about:newtab",
+  "about:blank",
+  "about:welcome",
+  "about:privatebrowsing",
+]);
+
+function openNewWindow({ private: isPrivate = false, url = null } = {}) {
   const args = Cc["@mozilla.org/array;1"].createInstance(Ci.nsIMutableArray);
-  const fresh = Cc["@mozilla.org/supports-string;1"].createInstance(
-    Ci.nsISupportsString
-  );
-  fresh.data = "fresh";
-  args.appendElement(fresh);
+  for (const value of [FRESH_WINDOW, url].filter(Boolean)) {
+    const str = Cc["@mozilla.org/supports-string;1"].createInstance(
+      Ci.nsISupportsString
+    );
+    str.data = value;
+    args.appendElement(str);
+  }
   Services.ww.openWindow(
     null,
-    location.href,
+    "chrome://browser/content/browser.xhtml",
     "_blank",
-    "chrome,dialog=no,all",
+    `chrome,dialog=no,all${isPrivate ? ",private" : ""}`,
     args
   );
 }
 
-function applyStartupPrefs() {
-  Services.prefs.setIntPref("browser.link.open_newwindow", 3);
-  Services.prefs.setIntPref("browser.link.open_newwindow.restriction", 0);
+function openPrivateWithUrl(url) {
+  openNewWindow({ private: true, url });
 }
+
+/**
+ * Reads the URLs Gecko passes to a new browser window (for example when
+ * another program opens a link).
+ *
+ * @returns {{fresh: boolean, urls: string[]}}
+ */
+function windowArguments() {
+  const strings = [];
+  const add = value => {
+    if (value instanceof Ci.nsISupportsString) {
+      strings.push(value.data);
+    } else if (typeof value == "string") {
+      strings.push(value);
+    }
+  };
+  for (const arg of window.arguments ?? []) {
+    if (arg instanceof Ci.nsIArray) {
+      for (let i = 0; i < arg.length; i++) {
+        add(arg.queryElementAt(i, Ci.nsISupports));
+      }
+    } else {
+      add(arg);
+    }
+  }
+  const fresh = strings.includes(FRESH_WINDOW);
+  const urls = strings
+    .filter(s => s != FRESH_WINDOW)
+    .flatMap(s => s.split("|"))
+    .map(s => s.trim())
+    .filter(s => !START_PAGES.has(s) && /^[a-z][a-z0-9+.-]*:/i.test(s));
+  return { fresh, urls };
+}
+
+/**
+ * Sends URLs to an already open Gecko GX window instead of opening a second
+ * one, like Chrome does for links from other programs.
+ *
+ * @param {string[]} urls
+ * @returns {boolean} Whether another window took the URLs.
+ */
+function forwardToExistingWindow(urls) {
+  if (!urls.length || isPrivateWindow) {
+    return false;
+  }
+  for (const win of Services.wm.getEnumerator("geckogx:main")) {
+    if (
+      win != window &&
+      !win.closed &&
+      !Modules.PrivateBrowsingUtils.isWindowPrivate(win) &&
+      win.GeckoGX
+    ) {
+      win.GeckoGX.openTabs(urls);
+      win.focus();
+      return true;
+    }
+  }
+  return false;
+}
+
+async function setupSearchEngine() {
+  if (Prefs.get("searchSetup", false)) {
+    return;
+  }
+  try {
+    await Search.ready;
+    let engine = Modules.SearchService.getEngineByName("Brave Search");
+    engine ??= await Modules.SearchService.addUserEngine({
+      name: "Brave Search",
+      url: "https://search.brave.com/search?q={searchTerms}",
+      suggestUrl: "https://search.brave.com/api/suggest?q={searchTerms}",
+    });
+    await Modules.SearchService.setDefault(
+      engine,
+      Modules.SearchService.CHANGE_REASON.USER
+    );
+    Prefs.set("searchSetup", true);
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+const isPrivateWindow = Modules.PrivateBrowsingUtils.isWindowPrivate(window);
 
 window.addEventListener(
   "DOMContentLoaded",
@@ -809,11 +1022,29 @@ window.addEventListener(
 window.addEventListener(
   "load",
   () => {
+    const { fresh, urls } = windowArguments();
+    if (forwardToExistingWindow(urls)) {
+      window.close();
+      return;
+    }
+    document.documentElement.toggleAttribute("private", isPrivateWindow);
+    window.GeckoGX = {
+      get tabs() {
+        return Tabs.list;
+      },
+      openTabs(list) {
+        for (const url of list) {
+          Tabs.open(url);
+        }
+      },
+    };
     applyIcons();
-    applyStartupPrefs();
     Theme.apply();
     Tabs.init();
     Integration.init();
+    PopupNotifications.init();
+    Shields.init();
+    TabSearch.init();
     Urlbar.init();
     Toolbar.init();
     FindBar.init();
@@ -823,8 +1054,12 @@ window.addEventListener(
     Bookmarks.init();
     DownloadsView.init();
     Shortcuts.init();
-    const fresh = window.arguments?.[0] instanceof Ci.nsISupportsString;
-    Tabs.restoreSession(fresh);
+    Tabs.restoreSession(fresh || isPrivateWindow, !!urls.length);
+    for (const url of urls) {
+      Tabs.open(url);
+    }
+    setupSearchEngine();
+    Modules.GXStartup.windowReady();
   },
   { once: true }
 );

@@ -7,6 +7,9 @@
 /* import-globals-from minibrowser.js */
 /* import-globals-from gx-tabs.js */
 /* import-globals-from gx-integration.js */
+/* import-globals-from gx-notify.js */
+/* import-globals-from gx-shields.js */
+/* import-globals-from gx-tools.js */
 /* import-globals-from gx-sidebar.js */
 /* import-globals-from gx-control.js */
 /* import-globals-from gx-start.js */
@@ -36,14 +39,38 @@ const WALLPAPERS = [
   ["plain", "Schlicht"],
 ];
 
+const PRIVATE_ACCENT = "#a970ff";
+const PRIVATE_BACKDROP = "#120b1f";
+
 const Theme = {
   apply() {
     const root = document.documentElement;
-    root.style.setProperty("--accent", Prefs.get("accent", ACCENTS[0][1]));
-    root.style.setProperty("--bg", Prefs.get("backdrop", BACKDROPS[0][1]));
+    root.style.setProperty(
+      "--accent",
+      isPrivateWindow ? PRIVATE_ACCENT : Prefs.get("accent", ACCENTS[0][1])
+    );
+    root.style.setProperty(
+      "--bg",
+      isPrivateWindow
+        ? PRIVATE_BACKDROP
+        : Prefs.get("backdrop", BACKDROPS[0][1])
+    );
     root.dataset.wallpaper = Prefs.get("wallpaper", "glow");
+    document.body.classList.toggle(
+      "vertical-tabs",
+      Prefs.get("verticalTabs", false)
+    );
     if (Sidebar.current == "control") {
       Control.render();
+    }
+  },
+
+  toggleVerticalTabs() {
+    Prefs.set("verticalTabs", !Prefs.get("verticalTabs", false));
+    this.apply();
+    Tabs.selected?.scrollIntoView({ block: "nearest", inline: "nearest" });
+    if (Sidebar.current == "settings") {
+      Settings.render();
     }
   },
 };
@@ -241,6 +268,13 @@ const Settings = {
           "bookmarksBar",
           true,
           () => Bookmarks.renderBar()
+        ),
+        this.toggle(
+          "Vertikale Tabs",
+          "Tabs als Liste links statt oben, wie in Brave.",
+          "verticalTabs",
+          false,
+          () => Theme.apply()
         ),
         this.toggle(
           "Sitzung wiederherstellen",

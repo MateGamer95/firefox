@@ -7,6 +7,9 @@
 /* import-globals-from ../../../../toolkit/content/globalOverlay.js */
 /* import-globals-from minibrowser.js */
 /* import-globals-from gx-tabs.js */
+/* import-globals-from gx-notify.js */
+/* import-globals-from gx-shields.js */
+/* import-globals-from gx-tools.js */
 /* import-globals-from gx-sidebar.js */
 /* import-globals-from gx-control.js */
 /* import-globals-from gx-start.js */
@@ -364,6 +367,14 @@ const ContextMenu = {
           label: "Link-Adresse kopieren",
           cmd: () => copyToClipboard(context.linkURL),
         },
+        {
+          label: "Link zur Leseliste hinzufügen",
+          cmd: () => ReadingList.add(context.linkURL, context.linkTextStr),
+        },
+        {
+          label: "Link in privatem Fenster öffnen",
+          cmd: () => openPrivateWithUrl(context.linkURL),
+        },
         "-"
       );
     }
@@ -442,6 +453,12 @@ const ContextMenu = {
         {
           label: "Seitenadresse kopieren",
           cmd: () => copyToClipboard(data.docLocation),
+        },
+        { label: "Seite übersetzen", cmd: () => Tools.translate() },
+        { label: "Screenshot", cmd: () => Tools.screenshot() },
+        {
+          label: "Zur Leseliste hinzufügen",
+          cmd: () => ReadingList.addCurrent(),
         },
         { label: "Alles auswählen", cmd: () => goDoCommand("cmd_selectAll") },
         "-",

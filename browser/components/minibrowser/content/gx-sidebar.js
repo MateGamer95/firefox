@@ -7,6 +7,9 @@
 /* import-globals-from minibrowser.js */
 /* import-globals-from gx-tabs.js */
 /* import-globals-from gx-integration.js */
+/* import-globals-from gx-notify.js */
+/* import-globals-from gx-shields.js */
+/* import-globals-from gx-tools.js */
 /* import-globals-from gx-control.js */
 /* import-globals-from gx-start.js */
 /* import-globals-from gx-settings.js */
@@ -25,6 +28,8 @@ const VIEW_TITLES = {
   history: "Verlauf",
   bookmarks: "Lesezeichen",
   downloads: "Downloads",
+  reading: "Leseliste",
+  passwords: "Passwörter",
   settings: "Einstellungen",
 };
 
@@ -162,11 +167,14 @@ const Sidebar = {
     $("panel-popout").hidden = !isPanel;
     $("panel-reload").hidden = !isPanel;
     this.updateActive();
+    PopupNotifications.render();
     ({
       control: Control,
       history: HistoryView,
       bookmarks: BookmarksView,
       downloads: DownloadsView,
+      reading: ReadingList,
+      passwords: PasswordsView,
       settings: Settings,
     })[view]?.show();
   },
@@ -175,6 +183,7 @@ const Sidebar = {
     this.current = null;
     this.host.hidden = true;
     this.updateActive();
+    PopupNotifications.render();
   },
 
   updateActive() {

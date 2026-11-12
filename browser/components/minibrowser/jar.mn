@@ -3,11 +3,15 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 browser.jar:
+% override chrome://browser/content/browser.xhtml chrome://browser/content/minibrowser/minibrowser.xhtml
     content/browser/minibrowser/minibrowser.xhtml  (content/minibrowser.xhtml)
     content/browser/minibrowser/minibrowser.js     (content/minibrowser.js)
     content/browser/minibrowser/minibrowser.css    (content/minibrowser.css)
     content/browser/minibrowser/gx-tabs.js         (content/gx-tabs.js)
     content/browser/minibrowser/gx-integration.js  (content/gx-integration.js)
+    content/browser/minibrowser/gx-notify.js       (content/gx-notify.js)
+    content/browser/minibrowser/gx-shields.js      (content/gx-shields.js)
+    content/browser/minibrowser/gx-tools.js        (content/gx-tools.js)
     content/browser/minibrowser/gx-sidebar.js      (content/gx-sidebar.js)
     content/browser/minibrowser/gx-control.js      (content/gx-control.js)
     content/browser/minibrowser/gx-start.js        (content/gx-start.js)

@@ -7,6 +7,9 @@
 /* import-globals-from minibrowser.js */
 /* import-globals-from gx-tabs.js */
 /* import-globals-from gx-integration.js */
+/* import-globals-from gx-notify.js */
+/* import-globals-from gx-shields.js */
+/* import-globals-from gx-tools.js */
 /* import-globals-from gx-sidebar.js */
 /* import-globals-from gx-control.js */
 /* import-globals-from gx-settings.js */
@@ -139,9 +142,24 @@ const Start = {
   },
 
   updateWidgets() {
-    $("w-blocked").textContent =
-      Control.totalBlocked?.toLocaleString("de-DE") ?? "0";
+    const blocked = Shields.engine
+      ? Shields.totalBlocked()
+      : (Control.totalBlocked ?? 0);
+    $("w-blocked").textContent = blocked.toLocaleString("de-DE");
+    $("w-time").textContent = this.formatDuration(
+      blocked * SECONDS_SAVED_PER_BLOCK
+    );
+    $("w-data").textContent = formatBytes(blocked * BYTES_SAVED_PER_BLOCK);
     $("w-ram").textContent = Control.mem ? formatBytes(Control.mem) : "–";
-    $("w-tabs").textContent = String(Tabs.list.length);
+  },
+
+  formatDuration(seconds) {
+    if (seconds < 60) {
+      return `${Math.round(seconds)} s`;
+    }
+    if (seconds < 3600) {
+      return `${Math.round(seconds / 60)} min`;
+    }
+    return `${(seconds / 3600).toFixed(1).replace(".", ",")} h`;
   },
 };

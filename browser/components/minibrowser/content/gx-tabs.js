@@ -6,6 +6,9 @@
 
 /* import-globals-from minibrowser.js */
 /* import-globals-from gx-integration.js */
+/* import-globals-from gx-notify.js */
+/* import-globals-from gx-shields.js */
+/* import-globals-from gx-tools.js */
 /* import-globals-from gx-sidebar.js */
 /* import-globals-from gx-control.js */
 /* import-globals-from gx-start.js */
@@ -19,7 +22,7 @@ const BLOCKED_FLAGS =
   WPL.STATE_BLOCKED_FINGERPRINTING_CONTENT;
 
 /**
- *
+ * Keeps a tab's UI in sync with its browser's loads.
  */
 class TabProgressListener {
   QueryInterface = ChromeUtils.generateQI([
@@ -42,7 +45,12 @@ class TabProgressListener {
     }
     if (!(flags & WPL.LOCATION_CHANGE_SAME_DOCUMENT)) {
       tab.blocked = 0;
+      tab.adsBlocked = 0;
       tab.iconUrl = null;
+      PopupNotifications.locationChange(
+        webProgress.browsingContext?.embedderElement ?? tab.linkedBrowser
+      );
+      Shields.applyScriptPolicy(tab, false);
     }
     Tabs.updateTab(tab);
     if (tab == Tabs.selected) {
@@ -57,6 +65,7 @@ class TabProgressListener {
     }
     if (stateFlags & WPL.STATE_START) {
       this.tab.toggleAttribute("busy", true);
+      this.applyScriptPolicyFor(request);
     } else if (stateFlags & WPL.STATE_STOP) {
       this.tab.removeAttribute("busy");
       if (this.tab == Tabs.selected) {
@@ -66,6 +75,23 @@ class TabProgressListener {
     Tabs.updateTab(this.tab);
     if (this.tab == Tabs.selected) {
       Tabs.syncUI();
+    }
+  }
+
+  applyScriptPolicyFor(request) {
+    let host = "";
+    try {
+      host = request.URI?.host ?? "";
+    } catch {}
+    const bc = this.tab.linkedBrowser?.browsingContext;
+    if (!bc || !host) {
+      return;
+    }
+    const allow = !(
+      Shields.scriptsBlocked(host) && Shields.engine.isEnabledFor(host)
+    );
+    if (bc.allowJavascript != allow) {
+      bc.allowJavascript = allow;
     }
   }
 
@@ -91,8 +117,21 @@ class TabProgressListener {
   onProgressChange() {}
 }
 
+const GROUP_COLORS = [
+  ["Grau", "#9aa0a6"],
+  ["Blau", "#8ab4f8"],
+  ["Rot", "#f28b82"],
+  ["Gelb", "#fdd663"],
+  ["Grün", "#81c995"],
+  ["Pink", "#ff8bcb"],
+  ["Lila", "#c58af9"],
+  ["Cyan", "#78d9ec"],
+  ["Orange", "#fcad70"],
+];
+
 const Tabs = {
   list: [],
+  groups: new Map(),
   selected: null,
   closed: [],
   dragged: null,
@@ -109,6 +148,9 @@ const Tabs = {
       }
     });
     this.strip.addEventListener("wheel", e => {
+      if (document.body.classList.contains("vertical-tabs")) {
+        return;
+      }
       this.strip.scrollLeft += e.deltaY;
     });
     this.strip.addEventListener("dragover", e => this.onDragOver(e));
@@ -203,7 +245,7 @@ const Tabs = {
    *
    * @param {string|null} url  null opens the start page.
    * @param {object} opts
-   *   background, afterCurrent, Modules (restore without loading), title,
+   *   background, afterCurrent, lazy (restore without loading), title,
    *   openWindowInfo/name/remoteType (popups), skipLoad, plus load params.
    */
   open(url = null, opts = {}) {
@@ -215,6 +257,13 @@ const Tabs = {
     tab.blocked = 0;
 
     let index = this.list.length;
+    if (
+      opts.afterCurrent &&
+      this.selected?.groupId &&
+      this.groups.has(this.selected.groupId)
+    ) {
+      tab.groupId = this.selected.groupId;
+    }
     if (opts.afterCurrent && this.selected) {
       index = this.list.indexOf(this.selected) + 1;
       while (this.list[index]?.openerTab == this.selected) {
@@ -225,7 +274,7 @@ const Tabs = {
     this.list.splice(index, 0, tab);
     this.strip.insertBefore(tab, this.strip.children[index] ?? null);
 
-    if (opts.Modules && url) {
+    if (opts.lazy && url) {
       tab.unloaded = true;
       tab.toggleAttribute("sleeping", true);
     } else if (url || opts.openWindowInfo || opts.skipLoad) {
@@ -251,6 +300,7 @@ const Tabs = {
       maychangeremoteness: "true",
       messagemanagergroup: "browsers",
       manualactiveness: "true",
+      autocompletepopup: "PopupAutoComplete",
       message: "true",
       nodefaultsrc: "true",
     };
@@ -377,6 +427,7 @@ const Tabs = {
       this.load(tab, tab.pageUrl);
     }
     this.setActive(tab, true);
+    this.renderGroups();
     tab.scrollIntoView({ block: "nearest", inline: "nearest" });
     this.syncUI();
     if (tab.startPage) {
@@ -411,6 +462,7 @@ const Tabs = {
     this.destroyBrowser(tab);
     this.list.splice(i, 1);
     tab.remove();
+    this.pruneGroups();
     for (const t of this.list) {
       if (t.openerTab == tab) {
         t.openerTab = null;
@@ -600,6 +652,7 @@ const Tabs = {
   },
 
   syncUI() {
+    PopupNotifications.render();
     const tab = this.selected;
     if (!tab) {
       return;
@@ -628,11 +681,13 @@ const Tabs = {
   },
 
   finishDrag() {
+    this.strip.querySelectorAll(".tab-group-label").forEach(n => n.remove());
     if (!this.dragged) {
       return;
     }
     this.dragged = null;
     this.list = [...this.strip.querySelectorAll(".tab")];
+    this.renderGroups();
     this.scheduleSave();
   },
 
@@ -645,6 +700,29 @@ const Tabs = {
         "-",
         { label: "Neu laden", disabled: !b, cmd: () => b.reload() },
         { label: "Duplizieren", cmd: () => this.duplicate(tab) },
+        "-",
+        {
+          label: "Zu neuer Gruppe hinzufügen",
+          cmd: () => this.addToNewGroup(tab),
+        },
+        ...[...this.groups]
+          .filter(([id]) => id != tab.groupId)
+          .map(([id, g]) => ({
+            label: `Zu Gruppe „${g.name || "Unbenannt"}“ hinzufügen`,
+            cmd: () => this.addToGroup(tab, id),
+          })),
+        tab.groupId
+          ? {
+              label: "Aus Gruppe entfernen",
+              cmd: () => this.removeFromGroup(tab),
+            }
+          : null,
+        {
+          label: "Zur Leseliste hinzufügen",
+          disabled: !tab.pageUrl || tab.startPage,
+          cmd: () => ReadingList.add(tab.pageUrl, this.label(tab)),
+        },
+        "-",
         {
           label: tab.hasAttribute("muted")
             ? "Ton einschalten"
@@ -683,36 +761,195 @@ const Tabs = {
   },
 
   saveSession() {
-    if (!this.list.length) {
+    if (!this.list.length || isPrivateWindow) {
       return;
     }
     Prefs.set("session", {
       tabs: this.list.map(t => ({
         url: t.startPage || t.pageUrl == "about:blank" ? "" : t.pageUrl,
         title: t.pageTitle,
+        group: t.groupId ?? null,
       })),
+      groups: Object.fromEntries(this.groups),
       selected: this.list.indexOf(this.selected),
     });
   },
 
-  restoreSession(fresh) {
+  restoreSession(fresh, hasUrls = false) {
     const session =
       !fresh && Prefs.get("restoreSession", true)
         ? Prefs.get("session", null)
         : null;
     Sound.suspended = true;
     if (session?.tabs?.length) {
+      this.groups = new Map(Object.entries(session.groups ?? {}));
       for (const t of session.tabs) {
-        this.open(t.url || null, {
+        const tab = this.open(t.url || null, {
           title: t.title,
           background: true,
-          Modules: true,
+          lazy: true,
         });
+        if (t.group && this.groups.has(t.group)) {
+          tab.groupId = t.group;
+        }
       }
+      this.pruneGroups();
       this.select(this.list[session.selected] ?? this.list[0]);
-    } else {
+    } else if (!hasUrls) {
       this.open(Prefs.get("homepage", "") || null);
     }
     Sound.suspended = false;
+  },
+
+  // Tab groups, like Chrome.
+
+  addToNewGroup(tab) {
+    const used = new Set([...this.groups.values()].map(g => g.color));
+    const color = (GROUP_COLORS.find(([, c]) => !used.has(c)) ??
+      GROUP_COLORS[0])[1];
+    const id = `g${Date.now().toString(36)}`;
+    this.groups.set(id, { name: "", color, collapsed: false });
+    this.addToGroup(tab, id);
+    this.renameGroup(id);
+  },
+
+  addToGroup(tab, id) {
+    const last = this.list.findLast(t => t.groupId == id && t != tab);
+    tab.groupId = id;
+    if (last) {
+      this.list.splice(this.list.indexOf(tab), 1);
+      this.list.splice(this.list.indexOf(last) + 1, 0, tab);
+      last.after(tab);
+    }
+    this.pruneGroups();
+    this.renderGroups();
+    this.scheduleSave();
+  },
+
+  removeFromGroup(tab) {
+    tab.groupId = null;
+    this.pruneGroups();
+    this.renderGroups();
+    this.scheduleSave();
+  },
+
+  renameGroup(id) {
+    const group = this.groups.get(id);
+    const result = { value: group.name };
+    if (
+      Services.prompt.prompt(
+        window,
+        "Tab-Gruppe",
+        "Name der Gruppe:",
+        result,
+        null,
+        {}
+      )
+    ) {
+      group.name = result.value.trim();
+      this.renderGroups();
+      this.scheduleSave();
+    }
+  },
+
+  ungroup(id) {
+    for (const t of this.list) {
+      if (t.groupId == id) {
+        t.groupId = null;
+      }
+    }
+    this.groups.delete(id);
+    this.renderGroups();
+    this.scheduleSave();
+  },
+
+  closeGroup(id) {
+    for (const t of this.list.filter(x => x.groupId == id)) {
+      this.close(t);
+    }
+  },
+
+  toggleGroup(id) {
+    const group = this.groups.get(id);
+    group.collapsed = !group.collapsed;
+    if (group.collapsed && this.selected?.groupId == id) {
+      const outside = this.list.find(t => t.groupId != id);
+      if (outside) {
+        this.select(outside);
+      } else {
+        group.collapsed = false;
+      }
+    }
+    Sound.play("click");
+    this.renderGroups();
+    this.scheduleSave();
+  },
+
+  pruneGroups() {
+    for (const id of this.groups.keys()) {
+      if (!this.list.some(t => t.groupId == id)) {
+        this.groups.delete(id);
+      }
+    }
+  },
+
+  renderGroups() {
+    this.strip.querySelectorAll(".tab-group-label").forEach(n => n.remove());
+    let previous = null;
+    for (const tab of this.list) {
+      const group = tab.groupId ? this.groups.get(tab.groupId) : null;
+      tab.toggleAttribute("grouped", !!group);
+      tab.style.setProperty("--group-color", group?.color ?? "transparent");
+      tab.hidden = !!group?.collapsed && tab != this.selected;
+      if (group && tab.groupId != previous) {
+        const id = tab.groupId;
+        const label = el(
+          "div",
+          {
+            class: "tab-group-label",
+            title: group.collapsed ? "Gruppe ausklappen" : "Gruppe einklappen",
+            onclick: () => this.toggleGroup(id),
+            oncontextmenu: e => {
+              e.preventDefault();
+              this.openGroupMenu(id, e);
+            },
+          },
+          group.name || " "
+        );
+        label.style.setProperty("--group-color", group.color);
+        label.toggleAttribute("collapsed", group.collapsed);
+        tab.before(label);
+      }
+      previous = tab.groupId ?? null;
+    }
+  },
+
+  openGroupMenu(id, event) {
+    Menu.showAt(
+      $("tabContextMenu"),
+      [
+        { label: "Umbenennen …", cmd: () => this.renameGroup(id) },
+        {
+          label: "Neuer Tab in Gruppe",
+          cmd: () => {
+            const tab = this.open();
+            this.addToGroup(tab, id);
+          },
+        },
+        "-",
+        ...GROUP_COLORS.map(([name, color]) => ({
+          label: `Farbe: ${name}${this.groups.get(id).color == color ? " ✓" : ""}`,
+          cmd: () => {
+            this.groups.get(id).color = color;
+            this.renderGroups();
+            this.scheduleSave();
+          },
+        })),
+        "-",
+        { label: "Gruppierung aufheben", cmd: () => this.ungroup(id) },
+        { label: "Gruppe schließen", cmd: () => this.closeGroup(id) },
+      ],
+      event
+    );
   },
 };
